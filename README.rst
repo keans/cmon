@@ -12,7 +12,7 @@ The easiest way to install the ``cmon`` module is via ``pip``:
 
 ::
 
-    pip install cmon
+    pip3 install -U https://github.com/keans/cmon/archive/master.zip
 
 
 Prerequirements
