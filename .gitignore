@@ -1,0 +1,6 @@
+*.pyc
+*.bak
+*.db
+*.swp
+.vscode/
+
