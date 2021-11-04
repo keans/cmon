@@ -79,6 +79,7 @@ class CallMonitor:
         self._port = port
 
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.settimeout(10)
         self._q = queue.Queue()
         self._listeners = []
         self.listener_thread = None
