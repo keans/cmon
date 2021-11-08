@@ -16,7 +16,7 @@ def get_long_description():
 
 setup(
     name="cmon",
-    version="0.0.1",
+    version="0.0.2",
     description="FritzBox call monitor.",
     long_description=get_long_description(),
     url="https://github.com/keans/cmon",
