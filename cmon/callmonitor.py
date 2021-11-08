@@ -1,3 +1,4 @@
+import time
 import socket
 import threading
 import queue
@@ -34,7 +35,13 @@ class ListenerThread(threading.Thread):
             try:
                 data = self._sock.recv(1024).decode("ascii")
 
-            except OSError:
+            except socket.timeout:
+                # just continue after one second
+                time.sleep(1)
+                continue
+
+            except (socket.error, OSError):
+                # real socket problem here
                 data = ""
 
             if not data:
