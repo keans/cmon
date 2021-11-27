@@ -1,8 +1,8 @@
-import time
 import socket
 import threading
 import queue
 import logging
+import platform
 
 from cmon.models import CALL_TYPES_MAPPING
 
@@ -37,14 +37,15 @@ class ListenerThread(threading.Thread):
 
             except socket.timeout:
                 # just continue after one second
-                time.sleep(1)
+                log.debug("timeout")
                 continue
 
-            except (socket.error, OSError):
+            except (socket.error, OSError) as e:
                 # real socket problem here
+                log.debug(e)
                 data = ""
 
-            if not data:
+            if len(data) == 0:
                 # no data (=socket closed)
                 log.debug("no data => shutting down")
                 self.shutdown()
@@ -80,16 +81,55 @@ class CallMonitor:
     FritzBox call monitor class
     """
     def __init__(
-        self, hostname="fritz.box", port=1012,
+        self, hostname="fritz.box", port=1012, timeout=5
     ):
         self._hostname = hostname
         self._port = port
 
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._sock.settimeout(10)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        self._sock.settimeout(timeout)
         self._q = queue.Queue()
         self._listeners = []
         self.listener_thread = None
+
+    def _set_keepalive(self, after_idle_sec=1, interval_sec=3, max_fails=5):
+        """
+        active activates after after_idle_sec of idleness, then
+        keep pinging once every interval_sec and close the connection
+        when ping reaches max_fails
+        """
+        log.debug(
+            f"setting keep-alive (after_idle_sec={after_idle_sec}, "
+            f"interval_sec={interval_sec}, max_fails={max_fails})"
+        )
+        operating_system = platform.system()
+        if operating_system == "Linux":
+            # --- Linux ---
+            self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            self._sock.setsockopt(
+                socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, after_idle_sec
+            )
+            self._sock.setsockopt(
+                socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, interval_sec
+            )
+            self._sock.setsockopt(
+                socket.IPPROTO_TCP, socket.TCP_KEEPCNT, max_fails
+            )
+
+        elif operating_system == "Darwin":
+            # --- Darwin (MacOS) ---
+            self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            self._sock.setsockopt(
+                socket.IPPROTO_TCP, 0x10, interval_sec
+            )
+
+        elif operating_system == "Windows":
+            # --- Windows ---
+            self._sock.ioctl(
+                socket.SIO_KEEPALIVE_VALS,
+                (1, after_idle_sec * 1000, interval_sec * 1000)
+            )
 
     def add_listener(self, listener):
         """
@@ -106,6 +146,7 @@ class CallMonitor:
             # connect socket
             log.debug(f"connection to {self._hostname}:{self._port}...")
             self._sock.connect((self._hostname, self._port))
+            self._set_keepalive()
 
             # start listener thread
             self.listener_thread = ListenerThread(self._sock, self._q)
@@ -143,6 +184,9 @@ class CallMonitor:
                     else:
                         # no listeners
                         log.debug("No listeners found.")
+
+        except socket.gaierror as e:
+            log.error(e)
 
         except KeyboardInterrupt:
             # Ctrl + C
